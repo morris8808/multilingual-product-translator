@@ -1,0 +1,4 @@
+ALTER TABLE "UserPreference"
+ADD COLUMN "imagePageSize" INTEGER NOT NULL DEFAULT 24,
+ADD COLUMN "showLanguageLabels" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "showOnlineProductLink" BOOLEAN NOT NULL DEFAULT true;

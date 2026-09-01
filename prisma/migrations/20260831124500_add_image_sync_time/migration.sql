@@ -1,0 +1,1 @@
+ALTER TABLE "ImageVersion" ADD COLUMN "syncedAt" TIMESTAMP(3);

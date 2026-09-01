@@ -1,0 +1,31 @@
+services:
+  web:
+    build: .
+    container_name: multilingual-workbench-web
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env.production
+    environment:
+      PORT: "3001"
+    volumes:
+      - ./data/uploads:/app/public/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  worker:
+    build: .
+    container_name: multilingual-workbench-worker
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env.production
+    command: ["npm", "run", "worker"]
+    volumes:
+      - ./data/uploads:/app/public/uploads
+    depends_on:
+      web:
+        condition: service_healthy
+

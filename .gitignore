@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+tsconfig.tsbuildinfo
+npm-debug.log*
+public/uploads/private/*
+public/uploads/branding/*
+!public/uploads/private/.gitkeep
+!public/uploads/branding/.gitkeep
+.DS_Store
+

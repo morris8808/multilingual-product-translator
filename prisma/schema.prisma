@@ -1,0 +1,493 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  RETRYING
+  PAUSED
+  REVIEW
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ModelKind {
+  TEXT
+  IMAGE
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  name          String?
+  avatarUrl     String?
+  role          String          @default("USER")
+  authSource    String          @default("LOCAL")
+  externalId    String?
+  externalUsername String?
+  externalStatus String?
+  workbenchLoginEnabled Boolean @default(true)
+  encryptedExternalToken String?
+  lastSyncedAt  DateTime?
+  preferences   UserPreference?
+  memberships   Membership[]
+  migrationLogs MigrationLog[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([authSource, externalId])
+}
+
+model UserPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  theme            String   @default("system")
+  pageSize         Int      @default(20)
+  sidebarCollapsed Boolean  @default(false)
+  stickyHeader     Boolean  @default(true)
+  tableDensity     String   @default("comfortable")
+  developerMode    Boolean  @default(false)
+  imagePageSize    Int      @default(24)
+  showLanguageLabels Boolean @default(true)
+  showOnlineProductLink Boolean @default(true)
+  imagePreviewMaxWidth Int      @default(860)
+  customTheme      Json?
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt        DateTime @updatedAt
+}
+
+model Workspace {
+  id                String                   @id @default(cuid())
+  name              String
+  logoUrl           String?
+  subtitle          String?
+  memberships       Membership[]
+  siteConnections   SiteConnection[]
+  modelConnections  ModelConnection[]
+  importBatches     ImportBatch[]
+  jobs              Job[]
+  settings          WorkspaceSetting[]
+  providerCatalog   ModelProvider[]
+  fieldDefinitions  FieldDefinition[]
+  terms             Term[]
+  migrationLogs     MigrationLog[]
+  auditLogs         AuditLog[]
+  writebackRecords  WritebackRecord[]
+  contentRecords    ContentRecord[]
+  contentWritebacks ContentWritebackRecord[]
+  storageConnections StorageConnection[]
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+}
+
+model StorageConnection {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  name               String
+  provider           String
+  endpoint           String
+  region             String?
+  bucket             String
+  publicBaseUrl      String?
+  pathPrefix         String    @default("multilingual-workbench")
+  encryptedAccessKey String
+  encryptedSecretKey String
+  forcePathStyle     Boolean   @default(false)
+  enabled            Boolean   @default(true)
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([workspaceId, enabled])
+}
+
+model ContentRecord {
+  id          String    @id @default(cuid())
+  workspaceId String
+  siteId      String
+  entityType  String
+  sourceId    String
+  title       String?
+  data        Json
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, siteId, entityType, sourceId])
+  @@index([workspaceId, entityType, updatedAt])
+}
+
+model ContentWritebackRecord {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  translationJobId String
+  entityType       String
+  sourceId         String
+  idempotencyKey   String         @unique
+  status           String
+  requestPayload   Json
+  responsePayload  Json?
+  error            String?
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  translationJob   TranslationJob @relation(fields: [translationJobId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([workspaceId, createdAt])
+}
+
+model WorkspaceSetting {
+  id          String    @id @default(cuid())
+  workspaceId String
+  key         String
+  value       Json
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, key])
+}
+
+model ModelProvider {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  code         String
+  name         String
+  kind         ModelKind
+  category     String
+  capabilities Json?
+  isCustom     Boolean   @default(false)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, kind, code])
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        String    @default("owner")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model SiteConnection {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  name             String
+  platform         String
+  apiUrl           String
+  encryptedToken   String
+  baseLanguage     String?
+  enabledLanguages Json?
+  capabilities     Json?
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model ModelConnection {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  kind         ModelKind
+  provider     String
+  name         String
+  apiBase      String?
+  encryptedKey String?
+  model        String
+  capabilities Json?
+  enabled      Boolean   @default(true)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model ImportBatch {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  name         String
+  source       String
+  headers      Json
+  fieldMappings Json?
+  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  products     ProductDraft[]
+  migrationKey String?        @unique
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model ProductDraft {
+  id        String             @id @default(cuid())
+  batchId   String
+  sourceId  String?
+  rowIndex  Int
+  data      Json
+  original  Json
+  batch     ImportBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  variants  VariantDraft[]
+  images    ImageAsset[]
+  changes   ProductChangeLog[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([batchId, rowIndex])
+}
+
+model ProductChangeLog {
+  id        String       @id @default(cuid())
+  productId String
+  action    String
+  field     String?
+  before    Json?
+  after     Json?
+  detail    Json?
+  undoneAt  DateTime?
+  product   ProductDraft @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model FieldDefinition {
+  id           String     @id @default(cuid())
+  workspaceId  String
+  key          String
+  label        String
+  type         String
+  position     Int        @default(0)
+  defaultValue Json?
+  options      Json?
+  hidden       Boolean    @default(false)
+  frozen       Boolean    @default(false)
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rule         FieldRule?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([workspaceId, key])
+}
+
+model FieldRule {
+  id                String          @id @default(cuid())
+  fieldDefinitionId String          @unique
+  kind              String
+  config            Json
+  fieldDefinition   FieldDefinition @relation(fields: [fieldDefinitionId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model Term {
+  id            String            @id @default(cuid())
+  workspaceId   String
+  source        String
+  mode          String            @default("FIXED")
+  caseSensitive Boolean           @default(false)
+  enabled       Boolean           @default(true)
+  category      String            @default("custom")
+  spaceAfter    Boolean           @default(false)
+  note          String?
+  migrationKey  String?           @unique
+  workspace     Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  translations  TermTranslation[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([workspaceId, source])
+}
+
+model TermTranslation {
+  id       String @id @default(cuid())
+  termId   String
+  language String
+  value    String
+  term     Term   @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@unique([termId, language])
+}
+
+model VariantDraft {
+  id        String       @id @default(cuid())
+  productId String
+  sourceId  String?
+  data      Json
+  product   ProductDraft @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model ImageAsset {
+  id        String         @id @default(cuid())
+  productId String
+  sourceUrl String
+  position  Int
+  archived  Boolean        @default(false)
+  archiveUrl String?
+  archiveStorageId String?
+  archivedAt DateTime?
+  product   ProductDraft   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  versions  ImageVersion[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([productId, sourceUrl])
+  @@index([productId, archived, position])
+}
+
+model ImageVersion {
+  id        String     @id @default(cuid())
+  imageId   String
+  jobId     String?
+  url       String
+  operation String
+  status    String
+  metadata  Json?
+  isActive  Boolean    @default(false)
+  reviewedAt DateTime?
+  syncedAt   DateTime?
+  image     ImageAsset @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@index([imageId, createdAt])
+  @@unique([imageId, jobId])
+}
+
+model Job {
+  id             String          @id @default(cuid())
+  displayName    String?
+  workspaceId    String
+  type           String
+  status         JobStatus       @default(DRAFT)
+  payload        Json
+  result         Json?
+  totalItems     Int             @default(0)
+  completedItems Int             @default(0)
+  failedItems    Int             @default(0)
+  attempt        Int             @default(0)
+  maxAttempts    Int             @default(3)
+  idempotencyKey String?         @unique
+  heartbeatAt    DateTime?
+  availableAt    DateTime        @default(now())
+  lockedAt       DateTime?
+  workerId       String?
+  etaSeconds     Int?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  events         JobEvent[]
+  translationJob TranslationJob?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([status, availableAt, createdAt])
+}
+
+model JobEvent {
+  id        String   @id @default(cuid())
+  jobId     String
+  level     String
+  message   String
+  detail    Json?
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+model WorkerRuntime {
+  id           String   @id
+  hostname     String?
+  processId    Int
+  status       String   @default("ONLINE")
+  currentJobId String?
+  startedAt    DateTime @default(now())
+  heartbeatAt  DateTime @default(now())
+  stoppedAt    DateTime?
+  metadata     Json?
+
+  @@index([status, heartbeatAt])
+}
+
+model TranslationJob {
+  id                String                   @id @default(cuid())
+  jobId             String                   @unique
+  sourceLanguage    String
+  targetLanguages   Json
+  options           Json?
+  migrationKey      String?                  @unique
+  job               Job                      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  items             TranslationItem[]
+  writebackRecords  WritebackRecord[]
+  contentWritebacks ContentWritebackRecord[]
+}
+
+model TranslationItem {
+  id               String         @id @default(cuid())
+  translationJobId String
+  sourceId         String?
+  field            String
+  sourceText       String
+  translations     Json?
+  status           String         @default("PENDING")
+  error            String?
+  translationJob   TranslationJob @relation(fields: [translationJobId], references: [id], onDelete: Cascade)
+
+  @@index([translationJobId, status])
+}
+
+model MigrationLog {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  userId       String
+  migrationKey String    @unique
+  source       String
+  summary      Json
+  status       String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  action      String
+  entityType  String
+  entityId    String?
+  detail      Json?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
+}
+
+model WritebackRecord {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  translationJobId String
+  productId        String
+  sourceProductId  String
+  idempotencyKey   String         @unique
+  status           String
+  requestPayload   Json
+  responsePayload  Json?
+  error            String?
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  translationJob   TranslationJob @relation(fields: [translationJobId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([workspaceId, createdAt])
+}
