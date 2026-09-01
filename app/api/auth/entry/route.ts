@@ -10,10 +10,13 @@ function safeReturnTo(value: string | null) {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const returnTo = safeReturnTo(url.searchParams.get("returnTo"));
-  const response = NextResponse.redirect(
-    new URL(`/login?source=jofshop&returnTo=${encodeURIComponent(returnTo)}`, url.origin),
-    303,
-  );
+  // Keep the redirect relative so reverse proxies cannot leak their internal origin.
+  const response = new NextResponse(null, {
+    status: 303,
+    headers: {
+      Location: `/login?source=jofshop&returnTo=${encodeURIComponent(returnTo)}`,
+    },
+  });
 
   // An external JOFSHOP launch must never inherit an unrelated browser session.
   response.cookies.set(SESSION_COOKIE, "", {
