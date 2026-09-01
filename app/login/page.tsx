@@ -9,6 +9,7 @@ type LoginInit = { enabled: boolean; captchaRequired: boolean; captchaKey: strin
 
 export default function LoginPage() {
   const router = useRouter();
+  const [launchContext, setLaunchContext] = useState({ fromJofshop: false, returnTo: "/" });
   const [mode, setMode] = useState<"login" | "register">("login");
   const [init, setInit] = useState<LoginInit>();
   const [error, setError] = useState("");
@@ -30,7 +31,16 @@ export default function LoginPage() {
     finally { setCaptchaLoading(false); }
   }, []);
 
-  useEffect(() => { setUsername(localStorage.getItem("jofshop-login-username") || ""); void loadCaptcha(); }, [loadCaptcha]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedReturnTo = params.get("returnTo");
+    setLaunchContext({
+      fromJofshop: params.get("source") === "jofshop",
+      returnTo: requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//") ? requestedReturnTo : "/",
+    });
+    setUsername(localStorage.getItem("jofshop-login-username") || "");
+    void loadCaptcha();
+  }, [loadCaptcha]);
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setLoading(true); setError(""); setSuccess("");
@@ -40,7 +50,7 @@ export default function LoginPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "登录失败");
       if (remember) localStorage.setItem("jofshop-login-username", username); else localStorage.removeItem("jofshop-login-username");
-      router.replace("/"); router.refresh();
+      router.replace(launchContext.returnTo); router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "登录失败"); void loadCaptcha(); }
     finally { setLoading(false); }
   }
@@ -72,8 +82,8 @@ export default function LoginPage() {
           <div className="mb-7 flex items-center gap-3 lg:hidden"><span className="grid size-11 place-items-center overflow-hidden bg-transparent">{logo ? <img src={logo} alt="" className="size-full object-contain" /> : <Languages className="size-5" />}</span><div><p className="font-semibold">JOFSHOP 商品处理工作台</p><p className="text-xs text-muted-foreground">PRODUCT WORKBENCH</p></div></div>
           <div className="mb-4 grid grid-cols-2 rounded-xl bg-slate-200/70 p-1 dark:bg-slate-800"><button type="button" onClick={() => { setMode("login"); setError(""); }} className={`rounded-lg px-4 py-2 text-sm font-medium ${mode === "login" ? "bg-white shadow-sm dark:bg-slate-700" : "text-muted-foreground"}`}>账号登录</button><button type="button" onClick={() => { setMode("register"); setError(""); setSuccess(""); }} className={`rounded-lg px-4 py-2 text-sm font-medium ${mode === "register" ? "bg-white shadow-sm dark:bg-slate-700" : "text-muted-foreground"}`}>注册账号</button></div>
           {mode === "login" ? <form onSubmit={submitLogin} className="space-y-4 rounded-3xl border bg-white p-7 shadow-2xl shadow-slate-900/10 dark:bg-slate-900 sm:p-9">
-            <div><p className="text-sm font-medium text-blue-600">欢迎回来</p><h2 className="mt-1 text-3xl font-bold tracking-tight">登录工作台</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">用 JOFSHOP 独立站系统账号密码进行登录</p></div>
-            {init?.authenticated ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-900"><p className="font-medium">当前已登录：{init.sessionUser?.name || init.sessionUser?.externalUsername}</p><button type="button" className="mt-1.5 inline-flex items-center gap-1 font-medium text-emerald-700" onClick={() => router.replace("/")}>直接进入工作台 <ArrowRight className="size-4" /></button></div> : null}
+            <div><p className="text-sm font-medium text-blue-600">欢迎回来</p><h2 className="mt-1 text-3xl font-bold tracking-tight">登录工作台</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{launchContext.fromJofshop ? "已退出浏览器中的旧工作台账号，请使用当前店铺绑定的 JOFSHOP 账号登录" : "用 JOFSHOP 独立站系统账号密码进行登录"}</p></div>
+            {init?.authenticated ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-900"><p className="font-medium">当前已登录：{init.sessionUser?.name || init.sessionUser?.externalUsername}</p><button type="button" className="mt-1.5 inline-flex items-center gap-1 font-medium text-emerald-700" onClick={() => router.replace(launchContext.returnTo)}>直接进入工作台 <ArrowRight className="size-4" /></button></div> : null}
             <label className="block text-sm font-medium">登录账号<div className="relative mt-2"><UserRound className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-slate-400" /><input name="username" autoComplete="username" required autoFocus className="control h-12" style={paddedInput} placeholder="请输入登录账号" value={username} onChange={(event) => setUsername(event.target.value)} /></div></label>
             <PasswordField name="password" label="密码" placeholder="请输入密码" visible={showPassword} onToggle={() => setShowPassword((value) => !value)} style={paddedInput} />
             {init?.captchaRequired ? <label className="block text-sm font-medium">验证码<div className="mt-2 flex gap-2"><input name="captcha" required className="control h-12 min-w-0 flex-1" placeholder="输入图中字符" /><button type="button" onClick={() => void loadCaptcha()} className="flex h-12 w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white" title="点击刷新验证码">{captchaLoading ? <RefreshCw className="size-4 animate-spin" /> : init.captchaImage ? <img src={init.captchaImage} alt="登录验证码" className="h-full w-full object-contain" /> : <RefreshCw className="size-4" />}</button></div></label> : null}

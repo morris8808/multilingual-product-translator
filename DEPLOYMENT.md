@@ -11,3 +11,7 @@ docker compose -f docker-compose.production.yml up -d
 
 Runtime secrets belong in `.env.production` on the server and must not be
 committed. Uploaded files persist in `data/uploads`.
+
+Configure the JOFSHOP merchant navigation link to
+`https://workbench.jofshop.com/api/auth/entry`. This dedicated entry clears any
+unrelated workbench browser session before account verification.
