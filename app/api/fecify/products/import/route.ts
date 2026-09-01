@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { listFecifyProducts } from "@/lib/integrations/fecify";
+import { productImageRows } from "@/lib/product-images";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 const schema = z.object({
   siteConnectionId: z.string(),
@@ -51,6 +52,24 @@ export async function POST(request: Request) {
           original: clean(row),
         })),
       });
+      const products = await tx.productDraft.findMany({
+        where: { batchId: created.id },
+        select: { id: true, rowIndex: true },
+      });
+      const productIdByRow = new Map(
+        products.map((product) => [product.rowIndex, product.id]),
+      );
+      const imageAssets = rows.flatMap((row, rowIndex) => {
+        const productId = productIdByRow.get(rowIndex);
+        return productId
+          ? productImageRows(row).map((image) => ({ productId, ...image }))
+          : [];
+      });
+      if (imageAssets.length)
+        await tx.imageAsset.createMany({
+          data: imageAssets,
+          skipDuplicates: true,
+        });
       await tx.auditLog.create({
         data: {
           workspaceId: workspace.id,
@@ -61,6 +80,7 @@ export async function POST(request: Request) {
             siteConnectionId: site.id,
             rowCount: rows.length,
             page: input.page,
+            imageCount: imageAssets.length,
           },
         },
       });
@@ -70,6 +90,10 @@ export async function POST(request: Request) {
       {
         ...batch,
         rowCount: rows.length,
+        imageCount: rows.reduce(
+          (total, row) => total + productImageRows(row).length,
+          0,
+        ),
         total: result.total,
         totalPage: result.totalPage,
       },

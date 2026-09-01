@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getWorkspaceContext } from "@/lib/workspace-context";
 import { getTrashedImportBatches } from "@/lib/import-batch-trash";
+import { materializeWorkspaceProductImages } from "@/lib/product-images";
 
 const latestJobImageIds = (
   jobs: Array<{ payload: unknown; status: string }>,
@@ -24,6 +25,7 @@ const latestJobImageIds = (
 
 export async function GET(request: Request) {
   const { workspace, user } = await getWorkspaceContext();
+  await materializeWorkspaceProductImages(workspace.id);
   const url = new URL(request.url);
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
   const status = url.searchParams.get("status") || "all";
