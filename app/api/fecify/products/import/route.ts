@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "JOFSHOP 商品拉取失败" },
+      { error: error instanceof Error ? error.message : "独立站商品拉取失败" },
       { status: 502 },
     );
   }

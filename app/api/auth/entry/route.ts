@@ -14,11 +14,11 @@ export async function GET(request: Request) {
   const response = new NextResponse(null, {
     status: 303,
     headers: {
-      Location: `/login?source=jofshop&returnTo=${encodeURIComponent(returnTo)}`,
+      Location: `/login?returnTo=${encodeURIComponent(returnTo)}`,
     },
   });
 
-  // An external JOFSHOP launch must never inherit an unrelated browser session.
+  // External entry points always start a fresh local workbench session.
   response.cookies.set(SESSION_COOKIE, "", {
     httpOnly: true,
     sameSite: "lax",

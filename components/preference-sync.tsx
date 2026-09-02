@@ -15,7 +15,8 @@ type Theme = Record<
 type ThemePreferences = { theme?: string; customTheme?: Theme };
 
 export function applyPreferencesTheme(preferences: ThemePreferences) {
-  const theme = preferences.theme || "system";
+  const localOverride = localStorage.getItem("app-theme-override");
+  const theme = localOverride || preferences.theme || "system";
   const dark =
     theme === "dark" ||
     (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);

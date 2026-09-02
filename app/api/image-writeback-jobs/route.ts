@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     if (batches.size !== 1) throw new Error("一次只能同步同一导入批次的图片");
     const batch = products[0].batch;
     if (!batch.source.startsWith("FECIFY:"))
-      throw new Error("这些图片不属于可写回的 JOFSHOP 批次");
+      throw new Error("这些图片不属于可写回的独立站批次");
     const selectedIds = new Set(input.imageIds);
     const items = products
       .map((product) => ({

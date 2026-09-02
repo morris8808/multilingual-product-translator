@@ -141,7 +141,7 @@ export default function ConnectionsPage() {
                   <span className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary">
                     <Globe2 className="size-5" />
                   </span>
-                  <Badge variant="outline">{["fecify", "jofshop"].includes(row.platform.toLowerCase()) ? "JOFSHOP" : row.platform}</Badge>
+                  <Badge variant="outline">{["fecify", "jofshop"].includes(row.platform.toLowerCase()) ? "独立站" : row.platform}</Badge>
                 </div>
                 <CardTitle className="mt-3">{row.name}</CardTitle>
                 <CardDescription className="mt-2 flex items-center gap-2">
@@ -261,7 +261,7 @@ export default function ConnectionsPage() {
                   placeholder="输入平台名称"
                 />
                 <datalist id="platform-options">
-                  <option value="jofshop">JOFSHOP</option>
+                  <option value="jofshop">独立站标准接口</option>
                   <option value="custom">自定义平台</option>
                 </datalist>
               </Field>

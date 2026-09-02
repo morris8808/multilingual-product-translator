@@ -8,6 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { Prisma, PrismaClient, JobStatus } from "@prisma/client";
+import sharp from "sharp";
 import { decryptCredential } from "../lib/crypto";
 import { DEFAULT_TRANSLATION_PROMPT } from "../lib/translation-prompt";
 const db = new PrismaClient();
@@ -345,7 +346,7 @@ async function runImageGenerate(id: string) {
     }
     const image = images[index];
     const existing = await db.imageVersion.findUnique({
-      where: { imageId_jobId: { imageId: image.id, jobId: id } },
+      where: { imageId_jobId_sourceVersionKey: { imageId: image.id, jobId: id, sourceVersionKey: "DEFAULT" } },
     });
     if (existing) {
       const completed = index + 1;
@@ -486,6 +487,7 @@ async function runImageGenerate(id: string) {
       data: {
         imageId: image.id,
         jobId: id,
+        sourceVersionKey: "DEFAULT",
         url,
         operation: payload.operation,
         status: "REVIEW",
@@ -530,6 +532,140 @@ async function runImageGenerate(id: string) {
       },
     },
   });
+}
+type ImageEditPayload = {
+  imageIds: string[];
+  targets: Array<{ imageId: string; versionId: string | null }>;
+  operation: "CROP" | "RESIZE" | "WATERMARK_IMAGE" | "WATERMARK_TEXT";
+  aspectRatio?: string;
+  width?: number;
+  height?: number;
+  fit?: "cover" | "contain" | "fill" | "inside" | "outside";
+  background?: string;
+  watermarkUrl?: string;
+  scale?: number;
+  opacity?: number;
+  margin?: number;
+  position?: "northwest" | "north" | "northeast" | "west" | "center" | "east" | "southwest" | "south" | "southeast";
+  text?: string;
+  fontSize?: number;
+  color?: string;
+};
+const xmlEscape = (value: string) => value.replace(/[<>&"']/g, (character) => ({
+  "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;",
+})[character] || character);
+const overlayPosition = (
+  canvasWidth: number,
+  canvasHeight: number,
+  overlayWidth: number,
+  overlayHeight: number,
+  position: NonNullable<ImageEditPayload["position"]>,
+  margin: number,
+) => {
+  const left = position.includes("west") ? margin : position.includes("east") ? canvasWidth - overlayWidth - margin : Math.round((canvasWidth - overlayWidth) / 2);
+  const top = position.includes("north") ? margin : position.includes("south") ? canvasHeight - overlayHeight - margin : Math.round((canvasHeight - overlayHeight) / 2);
+  return { left: Math.max(0, left), top: Math.max(0, top) };
+};
+async function readLocalPublicImage(sourceUrl: string) {
+  if (!sourceUrl.startsWith("/uploads/private/") && !sourceUrl.startsWith("/generated/")) return null;
+  const relative = decodeURIComponent(sourceUrl.split(/[?#]/)[0]).replace(/^\//, "");
+  const root = path.resolve(process.cwd(), "public");
+  const target = path.resolve(root, relative);
+  if (!target.startsWith(`${root}${path.sep}`)) throw new Error("本地图片路径不安全");
+  return readFile(target);
+}
+async function runImageEdit(id: string) {
+  const job = await db.job.findUniqueOrThrow({ where: { id } });
+  const payload = job.payload as ImageEditPayload;
+  const versionIds = payload.targets.flatMap((target) => target.versionId ? [target.versionId] : []);
+  const found = await db.imageAsset.findMany({
+    where: { id: { in: payload.imageIds }, archived: false, product: { batch: { workspaceId: job.workspaceId } } },
+    include: { product: { include: { batch: true } }, versions: { where: { id: { in: versionIds } } } },
+  });
+  const byId = new Map(found.map((image) => [image.id, image]));
+  const workItems = payload.targets.map((target) => {
+    const image = byId.get(target.imageId);
+    const sourceVersion = target.versionId ? image?.versions.find((version) => version.id === target.versionId) : null;
+    return image && (!target.versionId || sourceVersion) ? { image, sourceVersion, sourceVersionKey: target.versionId || "ORIGINAL" } : null;
+  }).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (workItems.length !== payload.targets.length) throw new Error("部分原图或历史版本已不存在，请刷新后重试");
+  const watermarkBytes = payload.operation === "WATERMARK_IMAGE" && payload.watermarkUrl
+    ? await readLocalPublicImage(payload.watermarkUrl)
+    : null;
+  if (payload.operation === "WATERMARK_IMAGE" && !watermarkBytes) throw new Error("PNG 水印文件不存在");
+  await event(id, `开始批量图片编辑：${payload.operation}`, { total: workItems.length });
+  for (let index = job.completedItems; index < workItems.length; index++) {
+    const state = await db.job.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    if (state.status === JobStatus.PAUSED || state.status === JobStatus.CANCELLED) return;
+    const { image, sourceVersion, sourceVersionKey } = workItems[index];
+    const existing = await db.imageVersion.findUnique({ where: { imageId_jobId_sourceVersionKey: { imageId: image.id, jobId: id, sourceVersionKey } } });
+    if (existing) continue;
+    let sourceUrl = sourceVersion?.url || image.sourceUrl;
+    let sourceBytes = await readLocalPublicImage(sourceUrl);
+    if (!sourceBytes) {
+      if (!/^https?:\/\//i.test(sourceUrl)) {
+        const siteId = image.product.batch.source.startsWith("FECIFY:") ? image.product.batch.source.slice(7) : "";
+        const site = siteId ? await db.siteConnection.findFirst({ where: { id: siteId, workspaceId: job.workspaceId } }) : null;
+        if (!site) throw new Error("相对图片地址缺少站点连接");
+        const capabilities = (site.capabilities || {}) as { baseImageUrl?: string };
+        const imageBase = capabilities.baseImageUrl || `${new URL(site.apiUrl).origin}/media`;
+        sourceUrl = new URL(sourceUrl.replace(/^\//, ""), `${imageBase.replace(/\/$/, "")}/`).toString();
+      }
+      const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
+      if (!response.ok) throw new Error(`下载原图失败（HTTP ${response.status}）`);
+      sourceBytes = Buffer.from(await response.arrayBuffer());
+    }
+    const metadata = await sharp(sourceBytes).rotate().metadata();
+    const sourceWidth = metadata.width || 0;
+    const sourceHeight = metadata.height || 0;
+    if (!sourceWidth || !sourceHeight) throw new Error("无法读取原图尺寸");
+    let pipeline = sharp(sourceBytes).rotate();
+    if (payload.operation === "CROP") {
+      const [ratioWidth, ratioHeight] = (payload.aspectRatio || "1:1").split(":").map(Number);
+      const ratio = ratioWidth / ratioHeight;
+      const width = Math.min(sourceWidth, Math.round(sourceHeight * ratio));
+      const height = Math.min(sourceHeight, Math.round(sourceWidth / ratio));
+      const coordinates = overlayPosition(sourceWidth, sourceHeight, width, height, payload.position || "center", 0);
+      pipeline = pipeline.extract({ left: coordinates.left, top: coordinates.top, width, height });
+    } else if (payload.operation === "RESIZE") {
+      pipeline = pipeline.resize(payload.width, payload.height, {
+        fit: payload.fit || "cover",
+        position: "centre",
+        background: payload.background || "#ffffff",
+      });
+    } else if (payload.operation === "WATERMARK_IMAGE" && watermarkBytes) {
+      const targetWidth = Math.max(1, Math.round(sourceWidth * ((payload.scale || 20) / 100)));
+      const watermark = await sharp(watermarkBytes).resize({ width: targetWidth, withoutEnlargement: true }).ensureAlpha().linear([1, 1, 1, payload.opacity || 0.7], [0, 0, 0, 0]).png().toBuffer({ resolveWithObject: true });
+      const coordinates = overlayPosition(sourceWidth, sourceHeight, watermark.info.width, watermark.info.height, payload.position || "southeast", payload.margin || 0);
+      pipeline = pipeline.composite([{ input: watermark.data, ...coordinates }]);
+    } else if (payload.operation === "WATERMARK_TEXT") {
+      const fontSize = payload.fontSize || 36;
+      const textWidth = Math.min(sourceWidth, Math.max(fontSize * 2, Math.ceil((payload.text || "").length * fontSize * 0.72)));
+      const textHeight = Math.ceil(fontSize * 1.5);
+      const coordinates = overlayPosition(sourceWidth, sourceHeight, textWidth, textHeight, payload.position || "southeast", payload.margin || 0);
+      const svg = `<svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="600" fill="${payload.color || "#ffffff"}" fill-opacity="${payload.opacity || 0.7}">${xmlEscape(payload.text || "")}</text></svg>`;
+      pipeline = pipeline.composite([{ input: Buffer.from(svg), ...coordinates }]);
+    }
+    const output = await pipeline.png().toBuffer();
+    const archiveStorage = await activeArchiveStorage(job.workspaceId);
+    let url: string;
+    if (archiveStorage) {
+      const prefix = archiveStorage.pathPrefix.replace(/^\/+|\/+$/g, "");
+      url = await putStorageObject(archiveStorage, `${prefix}/edited/${id}/${image.id}-${sourceVersionKey}.png`, output, "image/png");
+    } else {
+      const filename = `${randomUUID()}.png`;
+      const directory = path.join(process.cwd(), "public", "generated");
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, filename), output);
+      url = `/generated/${filename}`;
+    }
+    await db.imageVersion.create({
+      data: { imageId: image.id, jobId: id, sourceVersionKey, url, operation: payload.operation, status: "REVIEW", metadata: { operation: payload.operation, sourceVersionId: sourceVersion?.id || null, sourceKind: sourceVersion ? "VERSION" : "ORIGINAL" } },
+    });
+    const completed = index + 1;
+    await db.job.update({ where: { id }, data: { completedItems: completed, heartbeatAt: new Date(), etaSeconds: workItems.length - completed, events: { create: { level: "INFO", message: `已处理 ${completed}/${workItems.length}` } } } });
+  }
+  await db.job.update({ where: { id }, data: { status: "REVIEW", finishedAt: new Date(), etaSeconds: 0, result: { edited: workItems.length }, events: { create: { level: "INFO", message: "批量图片编辑完成，等待确认采用" } } } });
 }
 async function runImageArchive(id: string) {
   const job = await db.job.findUniqueOrThrow({ where: { id } });
@@ -1771,6 +1907,7 @@ async function runClaimedJob(id: string) {
     )
       await runTranslation(id);
     else if (job.type === "IMAGE_GENERATE") await runImageGenerate(id);
+    else if (job.type === "IMAGE_EDIT") await runImageEdit(id);
     else if (job.type === "IMAGE_ARCHIVE") await runImageArchive(id);
     else if (job.type === "PRODUCT_DRAFT_WRITEBACK")
       await runProductDraftWriteback(id);

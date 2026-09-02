@@ -237,7 +237,7 @@ export default function ContentPage() {
       <PageHeading
         eyebrow="内容工作台"
         title="其他内容翻译"
-        description="从 JOFSHOP 拉取内容到 PostgreSQL，选择字段和语言后交给后台 Worker；关闭页面不会中断。"
+        description="从独立站拉取内容到 PostgreSQL，选择字段和语言后交给后台 Worker；关闭页面不会中断。"
       />
       <div className="flex flex-wrap gap-2">
         {(Object.keys(CONFIG) as ContentEntity[]).map((key) => (

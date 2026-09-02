@@ -16,14 +16,14 @@ async function context(id: string) {
       })
     : null;
   if (!batch?.source.startsWith("FECIFY:"))
-    throw new Error("该任务不是 JOFSHOP 商品批次，不能写回");
+    throw new Error("该任务不是独立站商品批次，不能写回");
   const site = await db.siteConnection.findFirst({
     where: {
       id: batch.source.slice("FECIFY:".length),
       workspaceId: workspace.id,
     },
   });
-  if (!site) throw new Error("原始 JOFSHOP 站点连接不存在");
+  if (!site) throw new Error("原始独立站连接不存在");
   const productIds = [
     ...new Set(translation.items.map((item) => item.sourceId).filter(Boolean)),
   ] as string[];

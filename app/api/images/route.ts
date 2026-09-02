@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   const recentImageJobs = await db.job.findMany({
     where: {
       workspaceId: workspace.id,
-      type: "IMAGE_GENERATE",
+      type: { in: ["IMAGE_GENERATE", "IMAGE_EDIT"] },
       status: { in: ["QUEUED", "RUNNING", "RETRYING", "PAUSED", "FAILED"] },
     },
     orderBy: { updatedAt: "desc" },

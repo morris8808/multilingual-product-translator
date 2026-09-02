@@ -55,14 +55,14 @@ export function PromotionCarousel() {
         <div className="rounded-2xl border bg-background/80 p-5 shadow-sm backdrop-blur">
           <p className="text-sm font-semibold">开通后即可连接本工作台</p>
           <ol className="mt-4 space-y-3 text-sm text-muted-foreground">
-            {['注册并创建 JOFSHOP 店铺', '获取 API 地址与访问 Token', '回到本页新增连接并同步语言'].map((step, index) => (
+            {['打开推广方提供的页面', '按页面说明完成相关操作', '返回工作台继续处理商品'].map((step, index) => (
               <li key={step} className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs text-primary-foreground">{index + 1}</span><span>{step}</span></li>
             ))}
           </ol>
           <Button asChild className="mt-5 w-full">
             <a href={ad.url} target="_blank" rel="noreferrer">{ad.buttonLabel}<ArrowRight className="size-4" /></a>
           </Button>
-          <p className="mt-3 text-center text-xs text-muted-foreground">将在新窗口打开 JOFSHOP 注册页面</p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">将在新窗口打开推广页面</p>
           {ads.length > 1 && (
             <div className="mt-4 flex items-center justify-center gap-2 border-t pt-4">
               <Button type="button" size="icon" variant="ghost" className="size-8" onClick={() => move(-1)} aria-label="上一条推广"><ArrowLeft className="size-4" /></Button>

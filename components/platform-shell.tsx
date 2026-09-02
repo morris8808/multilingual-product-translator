@@ -46,15 +46,9 @@ const WORK_ITEMS = [
   { href: "/tasks", key: "tasks", icon: ListTodo },
 ] as const;
 const SYSTEM_ITEMS = [
-  { href: "/recycle-bin", key: "recycleBin", icon: Trash2 },
-  { href: "/models", key: "models", icon: Bot },
-  { href: "/connections", key: "connections", icon: Plug },
-  { href: "/storage", key: "storage", icon: Database },
-  { href: "/profile", key: "profile", icon: UserCircle },
-  { href: "/users", key: "users", icon: Users },
   { href: "/preferences", key: "preferences", icon: Settings },
-  { href: "/developer", key: "developer", icon: Bug },
 ] as const;
+const SETTINGS_PATHS = ["/preferences", "/recycle-bin", "/models", "/connections", "/storage", "/users", "/developer"];
 const PAGE_TITLES: Record<string, string> = {
   "/": "首页",
   "/prepare": "商品处理工作台",
@@ -68,7 +62,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/storage": "存储归档",
   "/profile": "个人中心",
   "/users": "用户管理中心",
-  "/preferences": "通用设置",
+  "/preferences": "设置",
   "/developer": "开发者中心",
 };
 export function PlatformShell({ children }: { children: React.ReactNode }) {
@@ -87,6 +81,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
     subtitle?: string | null;
     logoUrl?: string | null;
   }>();
+  const [workspaceBrandLoaded, setWorkspaceBrandLoaded] = useState(false);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ name?: string | null; email?: string; authSource?: string }>();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -119,6 +114,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         ? (pendingPath || pathname) === "/"
         : (pendingPath || pathname).startsWith(href),
     )?.[1] || "工作台";
+  const inSettings = SETTINGS_PATHS.some((path) => pathname.startsWith(path));
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -141,10 +137,12 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
           setWorkspaceBrand(settings.workspace);
+          setWorkspaceBrandLoaded(true);
           setCurrentRole(settings.user?.role || "USER");
           setCurrentUser(settings.user);
-        }
+        } else setWorkspaceBrandLoaded(true);
       } catch {
+        if (active) setWorkspaceBrandLoaded(true);
         if (active)
           setHealth({
             database: { online: false },
@@ -218,13 +216,31 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       return !current;
     });
   };
-  const changeTheme = () => {
+  const changeTheme = async () => {
     const next = document.documentElement.classList.contains("dark")
       ? "light"
       : "dark";
     document.documentElement.classList.toggle("dark", next === "dark");
     localStorage.setItem("app-theme", next);
+    localStorage.setItem("app-theme-override", next);
     setTheme(next);
+    try {
+      const response = await fetch("/api/settings", { cache: "no-store" });
+      const settings = await response.json();
+      if (!response.ok) throw new Error(settings.error || "主题设置读取失败");
+      const saveResponse = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          section: "preferences",
+          data: { ...(settings.preferences || {}), theme: next },
+        }),
+      });
+      if (!saveResponse.ok) throw new Error("主题设置保存失败");
+      localStorage.removeItem("app-theme-override");
+    } catch {
+      // 保留本地覆盖，避免页面切换时被旧的服务端偏好反向覆盖。
+    }
   };
   const startPageLoading = (href: string) => {
     setPendingPath(href);
@@ -248,8 +264,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   const item = (
     entry: (typeof WORK_ITEMS)[number] | (typeof SYSTEM_ITEMS)[number],
   ) => {
-    const active =
-      entry.href === "/"
+    const active = entry.href === "/preferences"
+      ? SETTINGS_PATHS.some((path) => (pendingPath || pathname).startsWith(path))
+      : entry.href === "/"
         ? (pendingPath || pathname) === "/"
         : (pendingPath || pathname).startsWith(entry.href);
     const Icon = entry.icon;
@@ -276,7 +293,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       </Link>
     );
   };
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login" || pathname === "/setup-account") return <>{children}</>;
   return (
     <div
       className={cn(
@@ -284,14 +301,14 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         focusMode
           ? "lg:pl-0"
           : sidebarCollapsed
-            ? "lg:pl-20"
-            : "lg:pl-64",
+            ? "lg:pl-16"
+            : "lg:pl-48",
       )}
     >
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-white/8 bg-sidebar text-sidebar-foreground transition-all lg:translate-x-0",
-          sidebarCollapsed ? "w-20" : "w-64",
+          sidebarCollapsed ? "w-16" : "w-48",
           focusMode && "lg:-translate-x-full",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
@@ -302,8 +319,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             sidebarCollapsed && "justify-center px-2",
           )}
         >
-          <span className={cn("grid size-10 place-items-center overflow-hidden rounded-xl", workspaceBrand?.logoUrl ? "bg-sidebar" : "bg-primary shadow-lg shadow-primary/20")}>
-            {workspaceBrand?.logoUrl ? (
+          <span className={cn("grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl", workspaceBrand?.logoUrl ? "bg-sidebar" : workspaceBrandLoaded ? "bg-primary shadow-lg shadow-primary/20" : "animate-pulse bg-white/10")}>
+            {!workspaceBrandLoaded ? null : workspaceBrand?.logoUrl ? (
               <img
                 src={workspaceBrand.logoUrl}
                 alt=""
@@ -314,20 +331,21 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             )}
           </span>
           {!sidebarCollapsed && (
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">
-              {workspaceBrand?.name || "多语言工作台"}
-            </p>
-            <p className="text-[10px] tracking-wider text-sidebar-foreground/50">
-              {workspaceBrand?.subtitle || t("shell.subtitle")}
-            </p>
+          <div className="min-w-0 flex-1">
+            {workspaceBrandLoaded ? <>
+              <p className="truncate text-sm font-semibold text-white">
+                {workspaceBrand?.name || "工作台"}
+              </p>
+              <p className="truncate text-[10px] tracking-wider text-sidebar-foreground/50">
+                {workspaceBrand?.subtitle || ""}
+              </p>
+            </> : <div className="space-y-2"><div className="h-3 w-24 animate-pulse rounded bg-white/10" /><div className="h-2 w-16 animate-pulse rounded bg-white/10" /></div>}
           </div>
           )}
         </div>
         <nav className="flex min-h-0 flex-1 flex-col p-3">
           <div className="space-y-1">{WORK_ITEMS.map(item)}</div>
           <div className="mt-auto space-y-1 border-t border-white/10 pt-3">
-            {SYSTEM_ITEMS.filter((entry) => !["/users", "/developer"].includes(entry.href) || ["ADMIN", "DEVELOPER"].includes(currentRole || "")).map(item)}
             <button
               type="button"
               className={cn(
@@ -342,7 +360,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               ) : (
                 <PanelLeftClose className="size-5" />
               )}
-              {!sidebarCollapsed && <span>折叠侧边栏</span>}
             </button>
           </div>
         </nav>
@@ -412,7 +429,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             variant="ghost"
             size="icon"
             title="切换主题"
-            onClick={changeTheme}
+            onClick={() => void changeTheme()}
           >
             {theme === "dark" ? (
               <Sun className="size-4" />
@@ -487,16 +504,17 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
-          <div className="relative" onMouseEnter={openAccountMenu} onMouseLeave={closeAccountMenu}>
+          <div className="relative">
             <Button variant="outline" size="sm" type="button" aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((value) => !value)}>
               <UserCircle className="size-4" />
               <span className="hidden sm:inline">{t("nav.profile")}</span>
               <ChevronDown className={cn("hidden size-3.5 transition-transform sm:block", accountMenuOpen && "rotate-180")} />
             </Button>
-            {accountMenuOpen ? <div role="menu" className="absolute right-0 top-full z-50 w-64 pt-2" onMouseEnter={openAccountMenu} onMouseLeave={closeAccountMenu}>
+            {accountMenuOpen ? <div role="menu" className="absolute right-0 top-full z-50 w-64 pt-2">
               <div className="overflow-hidden rounded-xl border bg-card p-2 text-card-foreground shadow-xl">
                 <div className="border-b px-3 py-2.5"><p className="truncate text-sm font-semibold">{currentUser?.name || "工作台用户"}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{currentUser?.email || "当前登录账号"}</p></div>
                 <Link role="menuitem" href="/profile" onClick={() => setAccountMenuOpen(false)} className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm hover:bg-muted"><UserCircle className="size-4" />进入个人中心</Link>
+                <Link role="menuitem" href="/preferences" onClick={() => setAccountMenuOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm hover:bg-muted"><Settings className="size-4" />设置</Link>
                 <button role="menuitem" type="button" onClick={() => void logout()} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-destructive hover:bg-destructive/10"><LogOut className="size-4" />退出登录</button>
               </div>
             </div> : null}
@@ -511,8 +529,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               focusMode
                 ? "lg:left-0"
                 : sidebarCollapsed
-                  ? "lg:left-20"
-                  : "lg:left-64",
+                  ? "lg:left-16"
+                  : "lg:left-48",
             )}
           >
             <div className="flex items-center gap-3 rounded-xl border bg-card px-5 py-4 text-sm shadow-xl">
@@ -520,7 +538,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               正在打开{pageTitle}…
             </div>
           </div>
-        ) : children}
+        ) : inSettings ? <div className="grid items-start xl:grid-cols-[220px_minmax(0,1fr)]"><SettingsNavigation role={currentRole} pathname={pathname} /><div className="min-w-0">{children}</div></div> : children}
       </div>
       <div
         className={cn(
@@ -562,4 +580,35 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+function SettingsNavigation({ role, pathname }: { role: string | null; pathname: string }) {
+  const groups = [
+    { title: "工作台设置", items: [
+      { href: "/preferences", label: "通用设置", note: "外观、分页与界面行为" },
+      { href: "/models", label: "模型连接", note: "文本与图片模型" },
+    ] },
+    { title: "数据与集成", items: [
+      { href: "/connections", label: "独立站 API", note: "店铺连接与语言" },
+      { href: "/storage", label: "存储归档", note: "图片存储与归档" },
+      { href: "/recycle-bin", label: "回收站", note: "恢复或清理数据" },
+    ] },
+    ...(["ADMIN", "DEVELOPER"].includes(role || "") ? [{ title: "权限与系统", items: [
+      { href: "/users", label: "用户与权限", note: "成员角色与登录权限" },
+      { href: "/developer", label: "开发者中心", note: "诊断日志与审计" },
+    ] }] : []),
+  ];
+  return <aside className="sticky top-18 hidden h-[calc(100vh-4.5rem)] overflow-y-auto border-r bg-card/50 p-4 xl:block">
+    <p className="mb-4 px-2 text-sm font-semibold">设置中心</p>
+    <div className="space-y-5">{groups.map((group) => <section key={group.title}>
+      <p className="px-2 pb-1 text-[11px] font-semibold text-muted-foreground">{group.title}</p>
+      <div className="space-y-1">{group.items.map((entry) => {
+        const active = pathname.startsWith(entry.href);
+        return <Link key={entry.href} href={entry.href} className={cn("block rounded-lg px-2.5 py-2 text-sm hover:bg-muted", active && "bg-primary text-primary-foreground hover:bg-primary")}>
+          <span className="block font-medium">{entry.label}</span>
+          <span className={cn("mt-0.5 block text-[10px] text-muted-foreground", active && "text-primary-foreground/70")}>{entry.note}</span>
+        </Link>;
+      })}</div>
+    </section>)}</div>
+  </aside>;
 }

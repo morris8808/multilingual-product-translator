@@ -21,7 +21,7 @@ async function context(id: string) {
     include: { products: { orderBy: { rowIndex: "asc" } } },
   });
   if (!batch?.source.startsWith("FECIFY:"))
-    throw new Error("只有 JOFSHOP 商品批次可以同步");
+    throw new Error("只有独立站商品批次可以同步");
   const changes = batch.products
     .filter((p) => p.sourceId)
     .map((p) => {

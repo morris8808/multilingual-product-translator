@@ -34,8 +34,8 @@ export default async function ProfilePage() {
           <p className="mt-1 text-xs font-medium text-blue-600">
             身份：{roleLabel}
           </p>
-          <p className="text-sm text-slate-500">{user.email}</p>
-          <p className="mt-1 text-xs text-slate-400">账号来源：{user.authSource === "JOFSHOP" ? `JOFSHOP · ${user.externalUsername || "后台账号"}` : "本地工作台"}</p>
+          <p className="text-sm text-slate-500">用户名：{user.username || user.name || "未设置"}</p>
+          <p className="mt-1 text-xs text-slate-400">账号来源：本地工作台</p>
         </div>
         <LogoutButton />
       </section>

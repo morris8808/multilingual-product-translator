@@ -152,6 +152,7 @@ export default function PreferencesPage() {
       return result;
     },
     onSuccess: async (_result, data) => {
+      localStorage.removeItem("app-theme-override");
       applyPreferencesTheme(data);
       await client.invalidateQueries({ queryKey: ["settings"] });
     },
@@ -175,15 +176,15 @@ export default function PreferencesPage() {
     <main className="space-y-6 p-6 lg:p-8">
       <PageHeading
         eyebrow="系统设置"
-        title="通用设置"
-        description="分页、主题、导航冻结和表格密度将保存到用户账户。"
+        title="设置"
+        description="集中管理工作台、模型、独立站、存储和系统工具。"
       />
       {query.error && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
           {query.error.message}。请先配置 DATABASE_URL 并执行数据库迁移。
         </div>
       )}
-      <Card className="max-w-4xl border-0 bg-transparent shadow-none">
+      <Card className="max-w-5xl border-0 bg-transparent shadow-none">
         <CardContent className="p-0">
           <form
             className="space-y-5"

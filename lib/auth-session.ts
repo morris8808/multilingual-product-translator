@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
-export const SESSION_COOKIE = "workbench_session";
+export const SESSION_COOKIE = "workbench_local_session";
+export const SETUP_COOKIE = "workbench_setup_required";
 const MAX_AGE = 60 * 60 * 12;
 
 type SessionPayload = { userId: string; exp: number };

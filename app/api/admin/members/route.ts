@@ -22,6 +22,7 @@ export async function GET() {
         user: {
           select: {
             id: true,
+            username: true,
             name: true,
             email: true,
             role: true,
@@ -103,6 +104,7 @@ export async function PATCH(request: Request) {
       data: { role: nextRole, ...(typeof input.workbenchLoginEnabled === "boolean" ? { workbenchLoginEnabled: input.workbenchLoginEnabled } : {}) },
       select: {
         id: true,
+        username: true,
         name: true,
         email: true,
         role: true,

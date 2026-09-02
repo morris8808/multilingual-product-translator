@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       let sites = 0, models = 0, fields = 0, terms = 0, products = 0, translationItems = 0;
       if (input.site && text(input.site.apiUrl || input.site.url)) {
         const token = text(input.site.token || input.site.apiToken);
-        await tx.siteConnection.create({ data: { workspaceId: workspace.id, name: text(input.site.name) || "迁移的 JOFSHOP 站点", platform: "jofshop", apiUrl: text(input.site.apiUrl || input.site.url), encryptedToken: encryptCredential(token), baseLanguage: text(input.site.baseLanguage) || null, enabledLanguages: (input.site.enabledLanguages || []) as Prisma.InputJsonValue } }); sites++;
+        await tx.siteConnection.create({ data: { workspaceId: workspace.id, name: text(input.site.name) || "迁移的独立站", platform: "jofshop", apiUrl: text(input.site.apiUrl || input.site.url), encryptedToken: encryptCredential(token), baseLanguage: text(input.site.baseLanguage) || null, enabledLanguages: (input.site.enabledLanguages || []) as Prisma.InputJsonValue } }); sites++;
       }
       for (const [kind, item] of [["TEXT", input.textModel], ["IMAGE", input.imageModel]] as const) if (item && text(item.model)) {
         const secret = text(item.apiKey || item.key);

@@ -16,7 +16,7 @@ const resources = {
         storage: "存储归档",
         profile: "个人中心",
         users: "用户管理",
-        preferences: "通用设置",
+        preferences: "设置",
         developer: "开发者中心",
         recycleBin: "回收站",
       },

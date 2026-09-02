@@ -24,7 +24,7 @@ async function request<T>(
     });
   } catch (error) {
     const reason = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError") ? "请求超时" : "网络连接失败";
-    throw new Error(`${reason}：无法访问 JOFSHOP API ${base(connection.apiUrl)}，请检查 API 地址、网络和证书`);
+    throw new Error(`${reason}：无法访问独立站 API ${base(connection.apiUrl)}，请检查 API 地址、网络和证书`);
   }
   const raw = await response.text();
   let payload: {
@@ -36,11 +36,11 @@ async function request<T>(
     try {
       payload = JSON.parse(raw) as typeof payload;
     } catch {
-      throw new Error(`JOFSHOP 返回了无法识别的响应（HTTP ${response.status}），请检查 API 地址是否填写正确`);
+      throw new Error(`独立站返回了无法识别的响应（HTTP ${response.status}），请检查 API 地址是否填写正确`);
     }
   }
   if (!response.ok || payload.code !== 200)
-    throw new Error(payload.message || `JOFSHOP 返回 ${response.status}`);
+    throw new Error(payload.message || `独立站返回 ${response.status}`);
   return payload.data as T;
 }
 export async function listFecifyProducts(

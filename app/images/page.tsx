@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  Crop,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -12,10 +13,12 @@ import {
   LoaderCircle,
   History,
   Sparkles,
+  Stamp,
   Trash2,
   UploadCloud,
   Upload,
   X,
+  Scaling,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import React from "react";
@@ -79,6 +82,7 @@ export default function ImagesPage() {
   const [targetImageUrl, setTargetImageUrl] = React.useState("");
   const client = useQueryClient();
   const [selected, setSelected] = React.useState<string[]>([]);
+  const [editTargets, setEditTargets] = React.useState<string[]>([]);
   const [page, setPage] = React.useState(1);
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [previewUrl, setPreviewUrl] = React.useState<string>();
@@ -88,8 +92,13 @@ export default function ImagesPage() {
   const [batchMessage, setBatchMessage] = React.useState("");
   const [batchPending, setBatchPending] = React.useState(false);
   const [taskOpen, setTaskOpen] = React.useState(true);
-  const [filtersOpen, setFiltersOpen] = React.useState(true);
-  const promptRef = React.useRef<HTMLInputElement>(null);
+  const [editorOpen, setEditorOpen] = React.useState(true);
+  const [toolMode, setToolMode] = React.useState<"ai" | "edit" | "manage">("ai");
+  const [editOperation, setEditOperation] = React.useState<"CROP" | "RESIZE" | "WATERMARK_IMAGE" | "WATERMARK_TEXT">("CROP");
+  const [editMessage, setEditMessage] = React.useState("");
+  const watermarkRef = React.useRef<HTMLInputElement>(null);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const promptRef = React.useRef<HTMLTextAreaElement>(null);
   const [promptHistory, setPromptHistory] = React.useState<string[]>([]);
   const [selectFrom, setSelectFrom] = React.useState(1);
   const [selectTo, setSelectTo] = React.useState(10);
@@ -275,6 +284,27 @@ export default function ImagesPage() {
       setPromptHistory(history);
       localStorage.setItem("image-prompt-history", JSON.stringify(history));
       setSelected([]);
+      void client.invalidateQueries({ queryKey: ["images"] });
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+  const editImages = useMutation({
+    mutationFn: async (formData: FormData) => {
+      if (!editTargets.length) throw new Error("请勾选至少一个原图或历史版本");
+      formData.set("operation", editOperation);
+      formData.set("targets", JSON.stringify(editTargets.map((key) => {
+        const [imageId, versionId] = key.split("::");
+        return { imageId, versionId: versionId === "ORIGINAL" ? null : versionId };
+      })));
+      const response = await fetch("/api/image-edit-jobs", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "图片编辑任务创建失败");
+      return data;
+    },
+    onSuccess: () => {
+      setEditMessage(`已提交 ${editTargets.length} 个指定版本，处理完成后可逐张或批量确认采用`);
+      setEditTargets([]);
+      if (watermarkRef.current) watermarkRef.current.value = "";
       void client.invalidateQueries({ queryKey: ["images"] });
       void client.invalidateQueries({ queryKey: ["jobs"] });
     },
@@ -606,30 +636,30 @@ export default function ImagesPage() {
         </Card>
       )}
       <div className="sticky top-[4.5rem] z-20 space-y-2 bg-background pb-2">
-        <Card className="shadow-lg">
-          <CardHeader className="py-3">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between text-left"
-              onClick={() => setTaskOpen((open) => !open)}
-              aria-expanded={taskOpen}
-            >
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="size-5" />
-                创建图片任务
-              </CardTitle>
-              <ChevronDown
-                className={`size-5 transition-transform ${taskOpen ? "rotate-180" : ""}`}
-              />
-            </button>
-          </CardHeader>
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-lg">
+          <div className="flex min-w-[260px] flex-1 items-center gap-2">
+            <select className="control h-9 min-w-0 flex-1 py-1 text-sm" value={productBatchId} onChange={(event) => { setProductBatchId(event.target.value); setPage(1); setSelected([]); setEditTargets([]); }}>
+              <option value="">全部商品数据</option>
+              {batchRows.map((batch) => <option key={batch.id} value={batch.id}>{batch.name} · {batch._count.products} 条</option>)}
+            </select>
+            <Button type="button" size="icon" variant="ghost" className="size-9 text-destructive" disabled={!productBatchId || deleteProductBatch.isPending} onClick={() => deleteProductBatch.mutate()} title="将当前商品数据移到回收站"><Trash2 className="size-4" /></Button>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
+            <Button type="button" size="sm" variant={toolMode === "ai" ? "default" : "ghost"} onClick={() => setToolMode("ai")}><Sparkles className="size-4" />AI 优化</Button>
+            <Button type="button" size="sm" variant={toolMode === "edit" ? "default" : "ghost"} onClick={() => setToolMode("edit")}><Crop className="size-4" />批量编辑</Button>
+            <Button type="button" size="sm" variant={toolMode === "manage" ? "default" : "ghost"} onClick={() => setToolMode("manage")}><Database className="size-4" />归档与同步</Button>
+          </div>
+          <Button type="button" size="sm" variant={filtersOpen ? "secondary" : "ghost"} onClick={() => setFiltersOpen((open) => !open)}><ChevronDown className={`size-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />筛选</Button>
+          <div className="ml-auto flex items-center gap-2 text-xs"><Badge variant="outline">{toolMode === "edit" ? `待编辑 ${editTargets.length} 个版本` : `已选 ${selected.length} 张图片`}</Badge></div>
+        </div>
+        {toolMode === "ai" && <Card className="shadow-lg">
           {taskOpen && (
-            <CardContent>
+            <CardContent className="p-3">
               <form
-                className="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1fr_2fr_auto]"
+                className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_2fr_auto]"
                 onSubmit={form.handleSubmit((v) => create.mutate(v))}
               >
-                <div>
+                <div className="hidden">
                   <Label>商品数据</Label>
                   <div className="mt-2 flex gap-2">
                     <select
@@ -693,16 +723,21 @@ export default function ImagesPage() {
                 </div>
                 <div>
                   <Label>生成要求</Label>
-                  <Input
+                  <textarea
                     ref={(element) => {
                       form.register("prompt").ref(element);
                       promptRef.current = element;
                     }}
                     name="prompt"
-                    list="image-prompt-history"
-                    className="mt-2"
+                    rows={1}
+                    className="control mt-2 min-h-10 w-full resize-none overflow-hidden py-2"
                     onBlur={form.register("prompt").onBlur}
-                    onChange={form.register("prompt").onChange}
+                    onChange={(event) => {
+                      void form.register("prompt").onChange(event);
+                      event.currentTarget.style.height = "auto";
+                      event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 144)}px`;
+                    }}
+                    placeholder="描述希望生成或修改的效果，内容较长时自动换行"
                   />
                   <datalist id="image-prompt-history">
                     {promptHistory.map((prompt) => (
@@ -710,9 +745,8 @@ export default function ImagesPage() {
                     ))}
                   </datalist>
                 </div>
-                <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-5">
-                  已选择 {selected.length} 张；单次最多 50
-                  张。刷新或关闭页面不会中断。
+                <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-4">
+                  已选择 {selected.length} 张；单次最多 50 张。刷新或关闭页面不会中断。
                 </p>
                 {(create.error ||
                   deleteProductBatch.error ||
@@ -720,7 +754,7 @@ export default function ImagesPage() {
                   archiveAdopted.error ||
                   form.formState.errors.prompt ||
                   form.formState.errors.modelConnectionId) && (
-                  <p className="text-sm text-destructive md:col-span-2 xl:col-span-5">
+                  <p className="text-sm text-destructive md:col-span-2 xl:col-span-4">
                     {create.error?.message ||
                       deleteProductBatch.error?.message ||
                       archive.error?.message ||
@@ -736,55 +770,64 @@ export default function ImagesPage() {
                   <ImagePlus className="size-4" />
                   {create.isPending ? "提交中…" : "开始优化"}
                 </Button>
-                <details className="md:col-span-2 xl:col-span-5">
-                  <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-md border px-3 text-sm">
-                    更多操作
-                  </summary>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={archive.isPending || !selected.length}
-                      onClick={() => archive.mutate()}
-                    >
-                      <Database className="size-4" />
-                      {archive.isPending ? "提交归档…" : "归档远端原图"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={archiveAdopted.isPending || !selected.length}
-                      onClick={() => archiveAdopted.mutate()}
-                    >
-                      <Database className="size-4" />
-                      {archiveAdopted.isPending ? "提交归档…" : "归档已采用图片"}
-                    </Button>
-                  </div>
-                </details>
               </form>
             </CardContent>
           )}
-        </Card>
-        <div className="rounded-xl border bg-card p-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              共 {query.data?.pagination.total || 0} 张图片，每页最多 24 张
-            </p>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              title={filtersOpen ? "收起筛选栏" : "展开筛选栏"}
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              <ChevronDown
-                className={`size-5 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
-              />
-            </Button>
-          </div>
-          {filtersOpen && (
+        </Card>}
+        {toolMode === "edit" && <Card>
+          {editorOpen && <CardContent className="p-3">
+            <form className="grid items-end gap-3 md:grid-cols-2 xl:grid-cols-5" onSubmit={(event) => { event.preventDefault(); editImages.mutate(new FormData(event.currentTarget)); }}>
+              <div>
+                <Label>编辑功能</Label>
+                <select className="control mt-2 w-full" value={editOperation} onChange={(event) => { setEditOperation(event.target.value as typeof editOperation); setEditMessage(""); }}>
+                  <option value="CROP">批量裁剪</option>
+                  <option value="RESIZE">指定尺寸</option>
+                  <option value="WATERMARK_IMAGE">Logo / PNG 图片水印</option>
+                  <option value="WATERMARK_TEXT">文字水印</option>
+                </select>
+              </div>
+              {editOperation === "CROP" && <>
+                <div><Label>裁剪比例</Label><select name="aspectRatio" className="control mt-2 w-full" defaultValue="1:1"><option>1:1</option><option>4:3</option><option>3:4</option><option>16:9</option><option>9:16</option></select></div>
+                <PositionSelect defaultValue="center" />
+              </>}
+              {editOperation === "RESIZE" && <>
+                <div><Label>宽度（px）</Label><Input name="width" type="number" min="64" max="10000" defaultValue="1200" className="mt-2" required /></div>
+                <div><Label>高度（px）</Label><Input name="height" type="number" min="64" max="10000" defaultValue="1200" className="mt-2" required /></div>
+                <div><Label>适配方式</Label><select name="fit" className="control mt-2 w-full" defaultValue="cover"><option value="cover">裁切铺满</option><option value="contain">完整留白</option><option value="fill">拉伸填满</option><option value="inside">限制在尺寸内</option><option value="outside">覆盖尺寸</option></select></div>
+                <div><Label>留白背景</Label><Input name="background" type="color" defaultValue="#ffffff" className="mt-2 h-10" /></div>
+              </>}
+              {editOperation === "WATERMARK_IMAGE" && <>
+                <div className="md:col-span-2"><Label>Logo / PNG 水印</Label><Input ref={watermarkRef} name="watermark" type="file" accept="image/png,.png" className="mt-2" required /></div>
+                <div><Label>水印宽度（原图 %）</Label><Input name="scale" type="number" min="5" max="80" defaultValue="20" className="mt-2" /></div>
+                <PositionSelect defaultValue="southeast" />
+                <OpacityAndMargin />
+              </>}
+              {editOperation === "WATERMARK_TEXT" && <>
+                <div className="md:col-span-2"><Label>水印文字</Label><Input name="text" maxLength={200} placeholder="请输入水印文字" className="mt-2" required /></div>
+                <div><Label>字号（px）</Label><Input name="fontSize" type="number" min="10" max="500" defaultValue="36" className="mt-2" /></div>
+                <div><Label>文字颜色</Label><Input name="color" type="color" defaultValue="#ffffff" className="mt-2 h-10" /></div>
+                <PositionSelect defaultValue="southeast" />
+                <OpacityAndMargin />
+              </>}
+              <div className="flex items-end xl:col-start-5"><Button className="w-full" disabled={editImages.isPending || !editTargets.length}>{editImages.isPending ? <LoaderCircle className="size-4 animate-spin" /> : editOperation === "RESIZE" ? <Scaling className="size-4" /> : editOperation.includes("WATERMARK") ? <Stamp className="size-4" /> : <Crop className="size-4" />}{editImages.isPending ? "提交中…" : `编辑所选 ${editTargets.length} 个版本`}</Button></div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:col-span-2 xl:col-span-5"><span>在图片预览上直接选择原图或具体版本，结果不会覆盖来源。</span><Badge variant="outline">原图 {editTargets.filter((key) => key.endsWith("::ORIGINAL")).length}</Badge><Badge variant="outline">历史版本 {editTargets.filter((key) => !key.endsWith("::ORIGINAL")).length}</Badge>{editTargets.length > 0 && <button type="button" className="text-primary hover:underline" onClick={() => setEditTargets([])}>清空</button>}</div>
+              {(editImages.error || editMessage) && <p className={`text-sm md:col-span-2 xl:col-span-5 ${editImages.error ? "text-destructive" : "text-emerald-600"}`}>{editImages.error?.message || editMessage}</p>}
+            </form>
+          </CardContent>}
+        </Card>}
+        {toolMode === "manage" && <Card>
+          <CardContent className="flex flex-wrap items-center gap-2 p-3">
+            <span className="mr-2 text-sm text-muted-foreground">对卡片右上角勾选的 {selected.length} 张图片执行：</span>
+            <Button type="button" variant="outline" size="sm" disabled={archive.isPending || !selected.length} onClick={() => archive.mutate()}><Database className="size-4" />{archive.isPending ? "提交归档…" : "归档远端原图"}</Button>
+            <Button type="button" variant="outline" size="sm" disabled={archiveAdopted.isPending || !selected.length} onClick={() => archiveAdopted.mutate()}><Database className="size-4" />{archiveAdopted.isPending ? "提交归档…" : "归档已采用图片"}</Button>
+            <Button type="button" size="sm" disabled={!selected.length || writeback.isPending || sourceMode === "private"} onClick={() => writeback.mutate()}><UploadCloud className="size-4" />{writeback.isPending ? "提交中…" : "同步已采用图片到独立站"}</Button>
+            <Button type="button" variant="outline" size="sm" disabled={!selected.length || batchPending} onClick={() => void toggleExcluded("exclude")}><X className="size-4" />排除所选图片</Button>
+            {(archive.error || archiveAdopted.error || writeback.error) && <p className="w-full text-sm text-destructive">{archive.error?.message || archiveAdopted.error?.message || writeback.error?.message}</p>}
+          </CardContent>
+        </Card>}
+        {filtersOpen && <div className="rounded-xl border bg-card p-3">
+          <div className="mb-2 text-sm text-muted-foreground">共 {query.data?.pagination.total || 0} 张图片，每页最多 24 张</div>
+          {(
             <>
               <div className="mt-3 flex flex-wrap gap-2">
             <select
@@ -820,7 +863,7 @@ export default function ImagesPage() {
               variant="outline"
               onClick={() => setMoreFilters((value) => !value)}
             >
-              更多筛选
+              高级筛选
             </Button>
             <div className="flex items-center gap-1 rounded-md border px-2">
               <Input
@@ -876,6 +919,8 @@ export default function ImagesPage() {
                 ? "取消本页全选"
                 : "本页全选"}
             </Button>
+            <div className="flex w-full flex-wrap items-center gap-2 border-t pt-2">
+            <span className="mr-1 text-xs font-medium text-muted-foreground">已选图片操作</span>
             <Button
               size="sm"
               disabled={!selected.length || batchPending}
@@ -900,11 +945,6 @@ export default function ImagesPage() {
               <UploadCloud className="size-4" />
               {sourceMode === "private" ? "自有图片仅支持导出" : writeback.isPending ? "提交中…" : "同步已采用图片到独立站"}
             </Button>
-            <details className="relative">
-              <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-md border px-3 text-sm">
-                更多操作
-              </summary>
-              <div className="absolute left-0 top-11 z-30 flex min-w-max flex-wrap gap-2 rounded-lg border bg-card p-2 shadow-xl">
                 <Button
                   size="sm"
                   variant="outline"
@@ -976,23 +1016,27 @@ export default function ImagesPage() {
                     清空所选图片版本图
                   </Button>
                 )}
-                <label className="flex items-center gap-2 rounded-md border px-2 text-xs text-muted-foreground">
-                  预览大小
-                  <input
-                    type="range"
-                    min="180"
-                    max="440"
-                    step="20"
-                    value={imageSize}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      setImageSize(value);
-                      localStorage.setItem("image-preview-size", String(value));
-                    }}
-                  />
-                </label>
-              </div>
-            </details>
+                <details className="relative ml-auto">
+                  <summary className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-md border px-2 text-xs text-muted-foreground" title="调整图片卡片显示大小">
+                    <Eye className="size-3.5" />显示
+                  </summary>
+                  <label className="absolute bottom-11 right-0 z-30 flex min-w-56 items-center gap-2 rounded-lg border bg-card p-3 text-xs text-muted-foreground shadow-xl">
+                    预览大小
+                    <input
+                      type="range"
+                      min="180"
+                      max="440"
+                      step="20"
+                      value={imageSize}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setImageSize(value);
+                        localStorage.setItem("image-preview-size", String(value));
+                      }}
+                    />
+                  </label>
+                </details>
+            </div>
               </div>
               {moreFilters && (
                 <div className="mt-3 grid w-full gap-2 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1029,7 +1073,7 @@ export default function ImagesPage() {
               )}
             </>
           )}
-        </div>
+        </div>}
       </div>
       {batchMessage && (
         <p className="rounded-lg border bg-card px-3 py-2 text-sm">
@@ -1061,12 +1105,15 @@ export default function ImagesPage() {
                   );
             const displayVersion =
               versionIndex >= 0 ? image.versions[versionIndex] || active : null;
-            const primaryImageUrl = active?.url || `/api/images/${image.id}/source`;
+            const primaryImageUrl = `/api/images/${image.id}/source`;
+            const originalTargetKey = `${image.id}::ORIGINAL`;
+            const versionTargetKey = displayVersion ? `${image.id}::${displayVersion.id}` : "";
             return (
               <Card
                 key={image.id}
                 className={`relative overflow-hidden ${pending ? "pointer-events-none grayscale" : ""} ${selected.includes(image.id) ? "border-primary ring-2 ring-primary/15" : ""}`}
                 onPointerDown={(event) => {
+                  if (toolMode === "edit") return;
                   const target = event.target as HTMLElement;
                   if (target.closest("a,button,input")) return;
                   dragging.current = true;
@@ -1077,7 +1124,7 @@ export default function ImagesPage() {
                   );
                 }}
                 onPointerEnter={() => {
-                  if (dragging.current)
+                  if (toolMode !== "edit" && dragging.current)
                     setSelected((current) =>
                       current.includes(image.id)
                         ? current
@@ -1134,29 +1181,33 @@ export default function ImagesPage() {
                         </p>
                       )}
                     </div>
-                    <input
-                      type="checkbox"
-                      className="size-4"
-                      checked={selected.includes(image.id)}
-                      onChange={() =>
-                        setSelected((s) =>
-                          s.includes(image.id)
-                            ? s.filter((id) => id !== image.id)
-                            : [...s, image.id],
-                        )
-                      }
-                    />
+                    {toolMode !== "edit" && <label className="flex cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={selected.includes(image.id)}
+                        onChange={() =>
+                          setSelected((s) =>
+                            s.includes(image.id)
+                              ? s.filter((id) => id !== image.id)
+                              : [...s, image.id],
+                          )
+                        }
+                      />
+                      选择
+                    </label>}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 gap-2">
-                    <figure>
+                    <figure className={`relative rounded-lg ${editTargets.includes(originalTargetKey) ? "ring-2 ring-primary" : ""}`}>
                       <figcaption className="mb-1 whitespace-nowrap text-[10px] text-muted-foreground sm:text-xs">
-                        {active ? "已采用图片" : "原图"}
+                        原图
                       </figcaption>
+                      {toolMode === "edit" && <label className="absolute right-2 top-7 z-20 flex cursor-pointer items-center gap-1 rounded-md bg-card/90 px-2 py-1 text-[10px] shadow"><input type="checkbox" checked={editTargets.includes(originalTargetKey)} onChange={() => setEditTargets((current) => current.includes(originalTargetKey) ? current.filter((key) => key !== originalTargetKey) : current.length < 50 ? [...current, originalTargetKey] : current)} />选择原图</label>}
                       <img
                         src={primaryImageUrl}
-                        alt={active ? "已采用图片" : "商品原图"}
+                        alt="商品原图"
                         className="aspect-square w-full cursor-zoom-in rounded-lg border object-contain"
                         onError={(event) => {
                           event.currentTarget.src = brokenImagePlaceholder;
@@ -1165,7 +1216,7 @@ export default function ImagesPage() {
                         onClick={() => setPreviewUrl(primaryImageUrl)}
                       />
                     </figure>
-                    <figure>
+                    <figure className={`relative rounded-lg ${versionTargetKey && editTargets.includes(versionTargetKey) ? "ring-2 ring-primary" : ""}`}>
                       <figcaption className="mb-1 whitespace-nowrap text-[10px] text-muted-foreground sm:text-xs">
                         {versionIndex < 0
                           ? "版本预览已清空"
@@ -1177,6 +1228,7 @@ export default function ImagesPage() {
                       </figcaption>
                       {displayVersion ? (
                         <div className="relative">
+                          {toolMode === "edit" && <label className="absolute right-2 top-2 z-20 flex cursor-pointer items-center gap-1 rounded-md bg-card/90 px-2 py-1 text-[10px] shadow"><input type="checkbox" checked={editTargets.includes(versionTargetKey)} onChange={() => setEditTargets((current) => current.includes(versionTargetKey) ? current.filter((key) => key !== versionTargetKey) : current.length < 50 ? [...current, versionTargetKey] : current)} />选择此版本</label>}
                           <img
                             src={displayVersion.url}
                             alt="生成版本"
@@ -1190,7 +1242,7 @@ export default function ImagesPage() {
                           {displayVersion.isActive && (
                             <Badge
                               variant="success"
-                              className="absolute right-2 top-2"
+                              className="absolute bottom-2 right-2"
                             >
                               当前
                             </Badge>
@@ -1403,4 +1455,12 @@ export default function ImagesPage() {
       )}
     </main>
   );
+}
+
+function PositionSelect({ defaultValue }: { defaultValue: string }) {
+  return <div><Label>位置</Label><select name="position" className="control mt-2 w-full" defaultValue={defaultValue}><option value="northwest">左上</option><option value="north">顶部居中</option><option value="northeast">右上</option><option value="west">左侧居中</option><option value="center">正中</option><option value="east">右侧居中</option><option value="southwest">左下</option><option value="south">底部居中</option><option value="southeast">右下</option></select></div>;
+}
+
+function OpacityAndMargin() {
+  return <><div><Label>透明度</Label><Input name="opacity" type="number" min="0.05" max="1" step="0.05" defaultValue="0.7" className="mt-2" /></div><div><Label>边距（px）</Label><Input name="margin" type="number" min="0" max="1000" defaultValue="24" className="mt-2" /></div></>;
 }

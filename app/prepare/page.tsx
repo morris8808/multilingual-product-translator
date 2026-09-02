@@ -24,7 +24,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
-import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +57,22 @@ type VariantRow = {
   sourceId: string | null;
   data: Record<string, unknown>;
   product: Product & { sourceId: string | null };
+};
+const variantImageUrl = (variant: VariantRow) => {
+  const data = variant.data || {};
+  const direct = data.image_url || data.imageUrl || data.image || data.featured_image;
+  if (typeof direct === "string") return direct;
+  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
+    const row = direct as Record<string, unknown>;
+    const url = row.url || row.src || row.image_url;
+    if (typeof url === "string") return url;
+  }
+  const images = [variant.product.data.images, variant.product.data.product_images, variant.product.data.image_list]
+    .find(Array.isArray) as Array<Record<string, unknown>> | undefined;
+  if (!images?.length) return "";
+  const imageId = String(data.image_id || data.imageId || "");
+  const match = images.find((image) => imageId && String(image.id || image.image_id || "") === imageId) || images[0];
+  return String(match.url || match.src || match.image_url || "");
 };
 type ProductsResponse = {
   items: Product[];
@@ -112,6 +127,8 @@ export default function PreparePage() {
   const [siteId, setSiteId] = useState("");
   const [fieldPanelOpen, setFieldPanelOpen] = useState(false);
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [autoLoadingVariants, setAutoLoadingVariants] = useState(false);
+  const autoLoadedVariantBatches = useRef(new Set<string>());
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const [quickSelected, setQuickSelected] = useState<string[]>([]);
   const [quickType, setQuickType] = useState<FieldDefinitionInput["type"]>("TEXT");
@@ -165,6 +182,7 @@ export default function PreparePage() {
     },
   });
   const batchRows = Array.isArray(batches.data) ? batches.data : [];
+  const currentBatch = batchRows.find((batch) => batch.id === batchId);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const linkedBatch = params.get("batchId") || "";
@@ -209,6 +227,42 @@ export default function PreparePage() {
       return data as { rows: VariantRow[]; headers: string[] };
     },
   });
+  useEffect(() => {
+    if (
+      tableMode !== "variants" ||
+      !batchId ||
+      variants.isLoading ||
+      variants.data?.rows.length ||
+      !currentBatch?.source.startsWith("FECIFY:") ||
+      autoLoadedVariantBatches.current.has(batchId)
+    ) return;
+    autoLoadedVariantBatches.current.add(batchId);
+    void (async () => {
+      setAutoLoadingVariants(true);
+      setUploadError("");
+      try {
+        const response = await fetch(`/api/import-batches/${batchId}/products?idsOnly=1`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "商品列表读取失败");
+        const ids = Array.isArray(data.ids) ? data.ids.map(String) : [];
+        for (let index = 0; index < ids.length; index += 4) {
+          await Promise.all(ids.slice(index, index + 4).map(async (productId: string) => {
+            const detailResponse = await fetch(`/api/products/${productId}/details`, { method: "POST" });
+            if (!detailResponse.ok) {
+              const detailData = await detailResponse.json().catch(() => ({}));
+              throw new Error(detailData.error || "规格加载失败");
+            }
+          }));
+        }
+        await client.invalidateQueries({ queryKey: ["batch-variants", batchId] });
+        await client.invalidateQueries({ queryKey: ["batch-products", batchId] });
+      } catch (error) {
+        setUploadError(error instanceof Error ? error.message : "规格自动加载失败");
+      } finally {
+        setAutoLoadingVariants(false);
+      }
+    })();
+  }, [batchId, client, currentBatch?.source, tableMode, variants.data?.rows.length, variants.isLoading]);
   const sites = useQuery({
     queryKey: ["site-connections"],
     queryFn: async () => {
@@ -310,7 +364,7 @@ export default function PreparePage() {
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "JOFSHOP 商品拉取失败");
+      if (!response.ok) throw new Error(data.error || "独立站商品拉取失败");
       return data;
     },
     onSuccess: (data) => {
@@ -642,7 +696,6 @@ export default function PreparePage() {
       });
     }
   };
-  const currentBatch = batchRows.find((batch) => batch.id === batchId);
   const syncProcessed = async () => {
     try {
       const previewResponse = await fetch(
@@ -674,13 +727,7 @@ export default function PreparePage() {
   };
   return (
     <main className="space-y-5 p-5 lg:p-8">
-      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
-        <PageHeading
-          eyebrow="商品处理核心"
-          title="商品处理工作台"
-          description="文件、字段和商品草稿已进入 PostgreSQL；单元格修改自动保存，页面刷新不会丢失。"
-        />
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
           <input
             ref={fileRef}
             type="file"
@@ -737,6 +784,10 @@ export default function PreparePage() {
             <Settings2 className="size-4" />
             字段快速设置
           </Button>
+          <Button variant="outline" onClick={() => setSearchPanelOpen(true)}>
+            <Search className="size-4" />
+            查找替换
+          </Button>
           <Button
             variant="outline"
             disabled={!batchId || qualityCheck.isPending}
@@ -763,7 +814,6 @@ export default function PreparePage() {
               流转到图片处理
             </Link>
           </Button>
-        </div>
       </div>
       {uploadError && (
         <div className="rounded-lg border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
@@ -884,12 +934,6 @@ export default function PreparePage() {
           </CardContent>
         </Card>
       )}
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={() => setSearchPanelOpen(true)}>
-          <Search className="size-4" />
-          高级查找与替换
-        </Button>
-      </div>
       {searchPanelOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/30"
@@ -1134,6 +1178,7 @@ export default function PreparePage() {
                   <thead className="sticky top-0 bg-muted">
                     <tr>
                       <th className="p-3 text-left">商品</th>
+                      <th className="p-3 text-left">商品图片</th>
                       <th className="p-3 text-left">规格 ID</th>
                       {(variants.data?.headers || []).map((header) => (
                         <th key={header} className="min-w-40 p-0 text-left">
@@ -1167,6 +1212,11 @@ export default function PreparePage() {
                               variant.product.id,
                           )}
                         </td>
+                        <td className="p-2">
+                          {variantImageUrl(variant) ? (
+                            <img src={variantImageUrl(variant)} alt="规格商品图片" className="size-14 rounded-md border bg-white object-contain" />
+                          ) : <span className="text-xs text-muted-foreground">暂无图片</span>}
+                        </td>
                         <td className="p-3 text-muted-foreground">
                           {variant.sourceId || variant.id}
                         </td>
@@ -1181,9 +1231,12 @@ export default function PreparePage() {
                     ))}
                   </tbody>
                 </table>
-                {!variants.isLoading && !variants.data?.rows.length && (
+                {(variants.isLoading || autoLoadingVariants) && (
+                  <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />正在自动加载商品规格与图片…</div>
+                )}
+                {!variants.isLoading && !autoLoadingVariants && !variants.data?.rows.length && (
                   <p className="p-10 text-center text-sm text-muted-foreground">
-                    暂无规格数据，请在商品表中点击“加载变体规格”。
+                    当前批次没有可用的规格数据。
                   </p>
                 )}
               </div>
@@ -1256,9 +1309,6 @@ export default function PreparePage() {
                           添加字段
                         </Button>
                       </th>
-                      <th className="sticky right-0 z-30 min-w-56 border-b border-l bg-muted p-3 text-left">
-                        记录操作
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1285,31 +1335,12 @@ export default function PreparePage() {
                         <td className="border-b border-r bg-muted/20 p-2 text-center text-xs text-muted-foreground">
                           —
                         </td>
-                        <td className="sticky right-0 z-10 border-b border-l bg-card p-2 group-hover:bg-muted">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void openHistory(product)}
-                          >
-                            <History className="size-3.5" />
-                            历史
-                          </Button>
-                          {currentBatch?.source.startsWith("FECIFY:") && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => void loadDetails(product.id)}
-                            >
-                              加载变体规格
-                            </Button>
-                          )}
-                        </td>
                       </tr>
                     ))}
                     {!products.data?.items.length && (
                       <tr>
                         <td
-                          colSpan={visibleHeaders.length + 3}
+                          colSpan={visibleHeaders.length + 2}
                           className="h-80 text-center text-muted-foreground"
                         >
                           <div className="flex flex-col items-center gap-3">

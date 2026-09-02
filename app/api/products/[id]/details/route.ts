@@ -23,7 +23,7 @@ export async function POST(
       !product.batch.source.startsWith("FECIFY:")
     )
       return Response.json(
-        { error: "该商品不是可拉取详情的 JOFSHOP 商品" },
+        { error: "该商品不是可拉取详情的独立站商品" },
         { status: 400 },
       );
     const site = await db.siteConnection.findFirst({
@@ -35,7 +35,7 @@ export async function POST(
     });
     if (!site)
       return Response.json(
-        { error: "没有可用的 JOFSHOP 连接" },
+        { error: "没有可用的独立站连接" },
         { status: 404 },
       );
     const detail = await getFecifyProduct(site, product.sourceId);

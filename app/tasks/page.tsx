@@ -57,6 +57,7 @@ const taskTypeLabel: Record<string, string> = {
   PRODUCT_FIELD_GENERATE: "商品字段生成",
   PRODUCT_DRAFT_WRITEBACK: "商品数据写回独立站",
   IMAGE_GENERATE: "商品图片生成",
+  IMAGE_EDIT: "商品图片批量编辑",
   IMAGE_ARCHIVE: "图片存储归档",
   CONTENT_TRANSLATION: "内容翻译",
   CONTENT_WRITEBACK: "内容翻译写回独立站",
@@ -83,6 +84,7 @@ const explainResult = (result: unknown) => {
       `失败 ${value.failed} 条${Number(value.failed) > 0 ? "，请查看下方日志中的接口错误、凭证或数据格式说明" : ""}`,
     );
   if (value.generated != null) parts.push(`成功生成 ${value.generated} 张图片`);
+  if (value.edited != null) parts.push(`成功编辑 ${value.edited} 张图片`);
   if (value.synced != null) parts.push(`成功同步 ${value.synced} 个商品`);
   if (value.remoteDeleted != null)
     parts.push(`删除远程对象 ${value.remoteDeleted} 个`);

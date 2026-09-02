@@ -29,7 +29,7 @@ export async function PUT(request: Request) {
       if (!/^https?:\/\//i.test(url)) throw new Error(`第 ${index + 1} 条推广链接无效`);
       return {
         id: String(ad.id || `promotion-${Date.now()}-${index}`),
-        type: ["JOFSHOP", "CUSTOM", "NOTICE"].includes(ad.type) ? ad.type : "CUSTOM",
+        type: ["CUSTOM", "NOTICE"].includes(ad.type) ? ad.type : "CUSTOM",
         badge: String(ad.badge || "推广专区").slice(0, 30),
         title: String(ad.title || "").trim().slice(0, 120),
         description: String(ad.description || "").trim().slice(0, 500),

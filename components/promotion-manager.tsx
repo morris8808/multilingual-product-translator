@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DEFAULT_PROMOTION_ADS, JOFSHOP_REGISTER_URL, type PromotionAd } from "@/lib/promotion-ads";
+import { DEFAULT_PROMOTION_ADS, type PromotionAd } from "@/lib/promotion-ads";
 
 const blankAd = (): PromotionAd => ({
   id: `promotion-${Date.now()}`,
@@ -15,8 +15,8 @@ const blankAd = (): PromotionAd => ({
   title: "",
   description: "",
   buttonLabel: "了解详情",
-  url: JOFSHOP_REGISTER_URL,
-  enabled: true,
+  url: "https://",
+  enabled: false,
 });
 
 export function PromotionManager() {
@@ -69,7 +69,7 @@ export function PromotionManager() {
               <Button type="button" size="icon" variant="ghost" className="text-destructive" onClick={() => setAds((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`删除广告 ${index + 1}`}><Trash2 className="size-4" /></Button>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2"><Label>广告类型</Label><select className="control" value={ad.type} onChange={(event) => update(index, { type: event.target.value as PromotionAd['type'] })}><option value="JOFSHOP">JOFSHOP 注册</option><option value="CUSTOM">自定义推广</option><option value="NOTICE">公告通知</option></select></label>
+              <label className="space-y-2"><Label>广告类型</Label><select className="control" value={ad.type} onChange={(event) => update(index, { type: event.target.value as PromotionAd['type'] })}><option value="CUSTOM">自定义推广</option><option value="NOTICE">公告通知</option></select></label>
               <label className="space-y-2"><Label>角标文字</Label><Input value={ad.badge} onChange={(event) => update(index, { badge: event.target.value })} /></label>
               <label className="space-y-2 md:col-span-2"><Label>主标题</Label><Input value={ad.title} onChange={(event) => update(index, { title: event.target.value })} /></label>
               <label className="space-y-2 md:col-span-2"><Label>推广说明</Label><textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 text-sm" value={ad.description} onChange={(event) => update(index, { description: event.target.value })} /></label>

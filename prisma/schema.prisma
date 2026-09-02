@@ -27,6 +27,9 @@ enum ModelKind {
 
 model User {
   id            String          @id @default(cuid())
+  username      String?         @unique
+  passwordHash  String?
+  mustChangeCredentials Boolean @default(false)
   email         String          @unique
   name          String?
   avatarUrl     String?
@@ -349,6 +352,7 @@ model ImageVersion {
   id        String     @id @default(cuid())
   imageId   String
   jobId     String?
+  sourceVersionKey String @default("DEFAULT")
   url       String
   operation String
   status    String
@@ -360,7 +364,7 @@ model ImageVersion {
   createdAt DateTime   @default(now())
 
   @@index([imageId, createdAt])
-  @@unique([imageId, jobId])
+  @@unique([imageId, jobId, sourceVersionKey])
 }
 
 model Job {

@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -462,11 +461,6 @@ export default function ProductsPage() {
   });
   return (
     <main className="space-y-6 p-5 lg:p-8">
-      <PageHeading
-        eyebrow="翻译工作流"
-        title="商品翻译"
-        description="选择商品、字段、语言与服务端模型后创建后台任务；术语规则由 Worker 自动应用。"
-      />
       <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
         <Card className="h-fit">
           <CardHeader>
