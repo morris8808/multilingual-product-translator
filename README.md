@@ -1,4 +1,4 @@
-https://github.com/morris8808/multilingual-product-translator/blob/f0d0a6fd25e60cff2c59b20b8accad953313e5e2/window.png
+![图片替代文字](https://github.com/morris8808/multilingual-product-translator/blob/f0d0a6fd25e60cff2c59b20b8accad953313e5e2/window.png)
 # 多语言商品工作台
 
 面向独立站商品团队的商品整理、翻译、图片处理与内容发布平台。系统采用独立账号体系，任务由后台 Worker 持续执行，页面关闭不会中断。
