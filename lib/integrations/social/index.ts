@@ -5,6 +5,9 @@ import { mediumProvider } from "./medium";
 import { xProvider } from "./x";
 import { linkedinProvider } from "./linkedin";
 import { facebookProvider } from "./facebook";
+import { instagramProvider } from "./instagram";
+import { tiktokProvider } from "./tiktok";
+import { youtubeProvider } from "./youtube";
 
 const registry: Record<string, SocialProvider> = {};
 
@@ -20,6 +23,9 @@ register(mediumProvider);
 register(xProvider);
 register(linkedinProvider);
 register(facebookProvider);
+register(instagramProvider);
+register(tiktokProvider);
+register(youtubeProvider);
 
 export function getSocialProvider(id: string): SocialProvider | undefined {
   return registry[id];
