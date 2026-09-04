@@ -10,6 +10,7 @@ import {
 import { Prisma, PrismaClient, JobStatus } from "@prisma/client";
 import sharp from "sharp";
 import { decryptCredential } from "../lib/crypto";
+import { publishSocialPost } from "../lib/social-publish";
 import { DEFAULT_TRANSLATION_PROMPT } from "../lib/translation-prompt";
 const db = new PrismaClient();
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -80,6 +81,37 @@ async function event(
   level = "INFO",
 ) {
   await db.jobEvent.create({ data: { jobId, message, level, detail } });
+}
+async function runSocialPublish(id: string) {
+  const job = await db.job.findUniqueOrThrow({ where: { id } });
+  const payload = job.payload as { socialPostId?: string };
+  if (!payload.socialPostId) throw new Error("社交帖子 ID 缺失");
+  const post = await db.socialPost.findUnique({
+    where: { id: payload.socialPostId },
+    select: { id: true, status: true, channel: { select: { name: true, platform: true } } },
+  });
+  if (!post) throw new Error("社交帖子不存在，可能已被删除");
+  await event(id, `开始发布到 ${post.channel.name}（${post.channel.platform}）`);
+  const result = await publishSocialPost(payload.socialPostId);
+  if (result.skipped) {
+    await event(id, "帖子已不是待发布状态，跳过", undefined, "WARN");
+    return;
+  }
+  await db.job.update({
+    where: { id },
+    data: {
+      status: "COMPLETED",
+      finishedAt: new Date(),
+      etaSeconds: 0,
+      result: { platformPostId: result.result.platformPostId, releaseUrl: result.result.releaseUrl || "" },
+      events: {
+        create: {
+          level: "INFO",
+          message: `已发布：${result.result.releaseUrl || result.result.platformPostId}`,
+        },
+      },
+    },
+  });
 }
 async function runSystemTest(id: string) {
   const job = await db.job.findUniqueOrThrow({ where: { id } });
@@ -1898,7 +1930,8 @@ async function runClaimedJob(id: string) {
       data: { currentJobId: id, heartbeatAt: new Date() },
     });
     const job = await db.job.findUniqueOrThrow({ where: { id } });
-    if (job.type === "SYSTEM_TEST") await runSystemTest(id);
+    if (job.type === "SOCIAL_PUBLISH") await runSocialPublish(id);
+    else if (job.type === "SYSTEM_TEST") await runSystemTest(id);
     else if (job.type === "PRODUCT_FIELD_GENERATE")
       await runProductFieldGenerate(id);
     else if (

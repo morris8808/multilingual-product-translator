@@ -14,6 +14,7 @@ import {
   Images,
   Languages,
   ListTodo,
+  Send,
   Bug,
   Menu,
   Maximize2,
@@ -44,6 +45,7 @@ const WORK_ITEMS = [
   { href: "/terms", key: "terms", icon: BookOpen },
   { href: "/content", key: "content", icon: Boxes },
   { href: "/tasks", key: "tasks", icon: ListTodo },
+  { href: "/social", key: "social", icon: Send },
 ] as const;
 const SYSTEM_ITEMS = [
   { href: "/preferences", key: "preferences", icon: Settings },
@@ -57,6 +59,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/terms": "术语管理",
   "/content": "内容翻译",
   "/tasks": "任务中心",
+  "/social": "社媒发布",
   "/models": "模型设置",
   "/connections": "独立站 API",
   "/storage": "存储归档",

@@ -88,6 +88,8 @@ model Workspace {
   contentRecords    ContentRecord[]
   contentWritebacks ContentWritebackRecord[]
   storageConnections StorageConnection[]
+  socialChannels    SocialChannel[]
+  socialPosts       SocialPost[]
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 }
@@ -493,5 +495,51 @@ model WritebackRecord {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
+  @@index([workspaceId, createdAt])
+}
+
+model SocialChannel {
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  platform           String
+  kind               String         @default("TOKEN")
+  name               String
+  profileId          String?
+  username           String?
+  picture            String?
+  encryptedAccessToken  String
+  encryptedRefreshToken String?
+  tokenExpiresAt     DateTime?
+  scope              String?
+  metadata           Json?
+  enabled            Boolean        @default(true)
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  posts              SocialPost[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([workspaceId, platform, enabled])
+  @@index([workspaceId, enabled])
+}
+
+model SocialPost {
+  id            String          @id @default(cuid())
+  workspaceId   String
+  channelId     String
+  content       String
+  media         Json?
+  scheduledAt   DateTime?
+  status        String          @default("DRAFT")
+  jobId         String?         @unique
+  platformPostId String?
+  releaseUrl    String?
+  error         String?
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel       SocialChannel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  publishedAt   DateTime?
+
+  @@index([workspaceId, status, scheduledAt])
   @@index([workspaceId, createdAt])
 }
